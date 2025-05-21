@@ -1,0 +1,400 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>高度Llama4 Maverickチャット</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap');
+
+  /* 全体レイアウト */
+  body, html {
+    margin: 0; padding: 0; height: 100%;
+    font-family: 'Inter', sans-serif;
+    background: #121212;
+    color: #e0e0e0;
+    display: flex;
+    overflow: hidden;
+  }
+  #leftMenu, #rightMenu {
+    width: 260px;
+    background: #1f1f1f;
+    border-right: 1px solid #333;
+    padding: 16px;
+    box-sizing: border-box;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    font-size: 0.9rem;
+  }
+  #rightMenu {
+    border-left: 1px solid #333;
+    border-right: none;
+  }
+  #centerArea {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+  }
+  header {
+    background: #1f1f1f;
+    padding: 16px 20px;
+    font-size: 1.5rem;
+    font-weight: 600;
+    border-bottom: 1px solid #333;
+    text-align: center;
+  }
+  main {
+    flex: 1;
+    padding: 20px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    background: #181818;
+  }
+  .message {
+    max-width: 70%;
+    padding: 12px 16px;
+    border-radius: 20px;
+    line-height: 1.4;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+  }
+  .user {
+    background: #3b82f6;
+    color: white;
+    align-self: flex-end;
+    border-bottom-right-radius: 4px;
+  }
+  .assistant {
+    background: #2a2a2a;
+    color: #ddd;
+    align-self: flex-start;
+    border-bottom-left-radius: 4px;
+  }
+  form {
+    display: flex;
+    padding: 12px 20px;
+    background: #1f1f1f;
+    border-top: 1px solid #333;
+  }
+  textarea {
+    flex: 1;
+    resize: none;
+    font-size: 1rem;
+    padding: 12px 16px;
+    border-radius: 20px;
+    border: none;
+    outline: none;
+    background: #2a2a2a;
+    color: #eee;
+    font-family: 'Inter', sans-serif;
+    max-height: 120px;
+  }
+  button {
+    margin-left: 12px;
+    background: #3b82f6;
+    border: none;
+    border-radius: 20px;
+    color: white;
+    font-weight: 600;
+    padding: 0 24px;
+    cursor: pointer;
+    transition: background-color 0.3s ease;
+  }
+  button:hover:not(:disabled) {
+    background: #2563eb;
+  }
+  button:disabled {
+    background: #555;
+    cursor: not-allowed;
+  }
+  footer {
+    text-align: center;
+    font-size: 0.75rem;
+    color: #666;
+    padding: 8px 0;
+    background: #121212;
+    border-top: 1px solid #222;
+  }
+
+  /* メニュー内の項目 */
+  .menu-section {
+    background: #2a2a2a;
+    padding: 12px;
+    border-radius: 12px;
+    box-sizing: border-box;
+  }
+  .menu-section h3 {
+    margin-top: 0;
+    font-weight: 600;
+    font-size: 1.1rem;
+    border-bottom: 1px solid #444;
+    padding-bottom: 6px;
+  }
+  #consoleOutput {
+    background: #111;
+    color: #0f0;
+    font-family: monospace;
+    font-size: 0.8rem;
+    padding: 8px;
+    height: 150px;
+    overflow-y: auto;
+    border-radius: 8px;
+    white-space: pre-wrap;
+  }
+
+  /* グラフ用 */
+  #stabilityChart {
+    width: 100%;
+    height: 150px;
+  }
+</style>
+</head>
+<body>
+  <div id="leftMenu">
+    <div class="menu-section">
+      <h3>残り返信予測回数</h3>
+      <div id="remainingCount">計算中...</div>
+    </div>
+    <div class="menu-section">
+      <h3>不具合通知</h3>
+      <div id="errorNotification">問題なし</div>
+    </div>
+    <div class="menu-section">
+      <h3>不具合数の合計</h3>
+      <div id="errorCount">0</div>
+    </div>
+    <div class="menu-section">
+      <h3>コンソール</h3>
+      <div id="consoleOutput"></div>
+    </div>
+  </div>
+
+  <div id="centerArea">
+    <header>Llama4 Maverick チャット</header>
+    <main id="chatWindow"></main>
+    <form id="chatForm">
+      <textarea id="inputText" placeholder="質問やメッセージを入力してください..." required></textarea>
+      <button type="submit" id="sendBtn">送信</button>
+    </form>
+    <footer>TOWABIIが作成</footer>
+  </div>
+
+  <div id="rightMenu">
+    <div class="menu-section">
+      <h3>返信時間の平均 (ms)</h3>
+      <div id="avgResponseTime">0</div>
+    </div>
+    <div class="menu-section">
+      <h3>不具合理由の予測</h3>
+      <div id="errorReason">特になし</div>
+    </div>
+    <div class="menu-section">
+      <h3>安定率</h3>
+      <canvas id="stabilityChart"></canvas>
+    </div>
+  </div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+  const chatWindow = document.getElementById('chatWindow');
+  const chatForm = document.getElementById('chatForm');
+  const inputText = document.getElementById('inputText');
+  const sendBtn = document.getElementById('sendBtn');
+
+  const remainingCountEl = document.getElementById('remainingCount');
+  const errorNotificationEl = document.getElementById('errorNotification');
+  const errorCountEl = document.getElementById('errorCount');
+  const consoleOutputEl = document.getElementById('consoleOutput');
+  const avgResponseTimeEl = document.getElementById('avgResponseTime');
+  const errorReasonEl = document.getElementById('errorReason');
+
+  // 安定率グラフ用データ
+  const ctx = document.getElementById('stabilityChart').getContext('2d');
+  const stabilityData = {
+    labels: [],
+    datasets: [{
+      label: '安定率 (%)',
+      data: [],
+      borderColor: '#3b82f6',
+      backgroundColor: 'rgba(59,130,246,0.3)',
+      fill: true,
+      tension: 0.4,
+      pointRadius: 3
+    }]
+  };
+  const stabilityChart = new Chart(ctx, {
+    type: 'line',
+    data: stabilityData,
+    options: {
+      responsive: true,
+      animation: false,
+      scales: {
+        y: {
+          min: 0,
+          max: 100,
+          ticks: {
+            stepSize: 20
+          }
+        }
+      }
+    }
+  });
+
+  // OpenRouter API設定
+  const API_KEY = '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'; // 必ず自分のAPIキーに変更してください
+  const API_URL = 'https://openrouter.ai/api/v1/chat/completions';
+  const MODEL = 'meta-llama/llama-4-maverick:free';
+
+  let errorCount = 0;
+  let totalResponseTime = 0;
+  let responseTimes = [];
+  let stableResponses = 0; // 成功回数
+  let totalRequests = 0;
+
+  function logConsole(msg) {
+    const timeStr = new Date().toLocaleTimeString();
+    consoleOutputEl.textContent += `[${timeStr}] ${msg}\n`;
+    consoleOutputEl.scrollTop = consoleOutputEl.scrollHeight;
+  }
+
+  // 残り返信予測回数（API制限の疑似カウント。適宜調整してください）
+  // ここでは最大100回中の残りをシミュレート
+  let maxCalls = 100;
+  let usedCalls = 0;
+  function updateRemainingCount() {
+    const remaining = maxCalls - usedCalls;
+    remainingCountEl.textContent = remaining >= 0 ? remaining : 0;
+  }
+
+  // 返信時間平均を計算・更新
+  function updateAvgResponseTime() {
+    if(responseTimes.length === 0) {
+      avgResponseTimeEl.textContent = '0';
+      return;
+    }
+    const sum = responseTimes.reduce((a,b) => a+b, 0);
+    const avg = Math.round(sum / responseTimes.length);
+    avgResponseTimeEl.textContent = avg.toLocaleString();
+  }
+
+  // 不具合理由の予測をシンプルに
+  function predictErrorReason() {
+    if(errorCount === 0) {
+      errorReasonEl.textContent = '特になし';
+      return;
+    }
+    // 例として不具合理由を固定で返す
+    if(errorCount > 5) {
+      errorReasonEl.textContent = 'トークン制限超過の可能性';
+    } else {
+      errorReasonEl.textContent = '通信エラーやAPI制限';
+    }
+  }
+
+  // 安定率更新（成功率を %で表示）
+  function updateStability(success) {
+    totalRequests++;
+    if(success) stableResponses++;
+
+    let rate = totalRequests === 0 ? 100 : (stableResponses / totalRequests) * 100;
+    rate = Math.round(rate);
+
+    // ラベルは「試行1, 2, 3...」
+    stabilityData.labels.push(totalRequests.toString());
+    stabilityData.datasets[0].data.push(rate);
+    if(stabilityData.labels.length > 30){
+      stabilityData.labels.shift();
+      stabilityData.datasets[0].data.shift();
+    }
+    stabilityChart.update();
+  }
+
+  // メイン送信処理
+  chatForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+
+    const userMsg = inputText.value.trim();
+    if(!userMsg) return;
+
+    // ユーザーメッセージを表示
+    addMessage(userMsg, 'user');
+    inputText.value = '';
+    sendBtn.disabled = true;
+
+    // API呼び出し
+    usedCalls++;
+    updateRemainingCount();
+
+    const messages = Array.from(chatWindow.querySelectorAll('.message')).map(el => {
+      return { role: el.classList.contains('user') ? 'user' : 'assistant', content: el.textContent };
+    });
+    // LLMにはsystemロールで指示も入れるのが望ましいがここは簡略化
+
+    let startTime = performance.now();
+    try {
+      logConsole('APIリクエスト送信...');
+      const res = await fetch(API_URL, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${API_KEY}`
+        },
+        body: JSON.stringify({
+          model: MODEL,
+          messages: [...messages, { role: 'user', content: userMsg }],
+          max_tokens: 500,
+          temperature: 0.7
+        })
+      });
+
+      if(!res.ok){
+        throw new Error(`HTTPエラー ${res.status}`);
+      }
+
+      const data = await res.json();
+      const assistantMsg = data.choices[0].message.content.trim();
+
+      let endTime = performance.now();
+      let responseTime = Math.round(endTime - startTime);
+      responseTimes.push(responseTime);
+      updateAvgResponseTime();
+
+      addMessage(assistantMsg, 'assistant');
+      logConsole(`応答取得成功 (所要時間: ${responseTime}ms)`);
+
+      // エラーなしなら安定率アップ
+      updateStability(true);
+      errorNotificationEl.textContent = '問題なし';
+
+    } catch(err) {
+      errorCount++;
+      errorCountEl.textContent = errorCount;
+      errorNotificationEl.textContent = `エラー発生: ${err.message}`;
+      logConsole(`エラー: ${err.message}`);
+      predictErrorReason();
+
+      updateStability(false);
+    } finally {
+      sendBtn.disabled = false;
+    }
+  });
+
+  // メッセージをチャットウィンドウに追加する関数
+  function addMessage(text, role) {
+    const div = document.createElement('div');
+    div.classList.add('message', role === 'user' ? 'user' : 'assistant');
+    div.textContent = text;
+    chatWindow.appendChild(div);
+    chatWindow.scrollTop = chatWindow.scrollHeight;
+  }
+
+  // 初期更新
+  updateRemainingCount();
+  updateAvgResponseTime();
+  predictErrorReason();
+</script>
+</body>
+</html>
